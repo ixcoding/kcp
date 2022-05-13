@@ -284,6 +284,7 @@ ikcpcb* ikcp_create(IUINT32 conv, void *user)
 	kcp->dead_link = IKCP_DEADLINK;
 	kcp->output = NULL;
 	kcp->writelog = NULL;
+	kcp->on_ack = NULL;
 
 	return kcp;
 }
@@ -460,7 +461,7 @@ int ikcp_peeksize(const ikcpcb *kcp)
 //---------------------------------------------------------------------
 // user/upper level send, returns below zero for error
 //---------------------------------------------------------------------
-int ikcp_send(ikcpcb *kcp, const char *buffer, int len)
+int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT16 usn)
 {
 	IKCPSEG *seg;
 	int count, i;
@@ -518,6 +519,7 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len)
 		}
 		seg->len = size;
 		seg->frg = (kcp->stream == 0)? (count - i - 1) : 0;
+		seg->usn = usn;
 		iqueue_init(&seg->node);
 		iqueue_add_tail(&seg->node, &kcp->snd_queue);
 		kcp->nsnd_que++;
@@ -527,7 +529,7 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len)
 		len -= size;
 	}
 
-	return 0;
+	return count;
 }
 
 
@@ -574,6 +576,7 @@ static void ikcp_parse_ack(ikcpcb *kcp, IUINT32 sn)
 		next = p->next;
 		if (sn == seg->sn) {
 			iqueue_del(p);
+			if (kcp->on_ack) kcp->on_ack(kcp, seg->usn);
 			ikcp_segment_delete(kcp, seg);
 			kcp->nsnd_buf--;
 			break;
@@ -592,6 +595,7 @@ static void ikcp_parse_una(ikcpcb *kcp, IUINT32 una)
 		next = p->next;
 		if (_itimediff(una, seg->sn) > 0) {
 			iqueue_del(p);
+			if(kcp->on_ack) kcp->on_ack(kcp, seg->usn);
 			ikcp_segment_delete(kcp, seg);
 			kcp->nsnd_buf--;
 		}	else {
