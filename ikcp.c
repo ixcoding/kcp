@@ -471,7 +471,8 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn)
 	int count, i;
 
 	assert(kcp->mss > 0);
-	if (len < 0) return -1;
+	if (len <= 0) return len;
+	if (len/kcp->mss >= (int)IKCP_WND_RCV-1) return -2;
 
 	// append to previous segment in streaming mode (if possible)
 	if (kcp->stream != 0) {
@@ -498,15 +499,9 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn)
 				ikcp_segment_delete(kcp, old);
 			}
 		}
-		if (len <= 0) {
-			return 0;
-		}
 	}
 
-	if (len <= (int)kcp->mss) count = 1;
-	else count = (len + kcp->mss - 1) / kcp->mss;
-
-	if (count >= (int)IKCP_WND_RCV) return -2;
+	count = (len + kcp->mss - 1) / kcp->mss;
 
 	// fragment
 	for (i = 0; i < count; i++) {
