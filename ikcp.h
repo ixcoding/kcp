@@ -369,7 +369,8 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn);
 // update state (call it repeatedly, every 10ms-100ms), or you can ask 
 // ikcp_check when to call it again (without ikcp_input/_send calling).
 // 'current' - current timestamp in millisec. 
-void ikcp_update(ikcpcb *kcp, IUINT32 current);
+// return error if kcp link dead
+int ikcp_update(ikcpcb *kcp, IUINT32 current);
 
 // Determine when should you invoke ikcp_update:
 // returns when you should invoke ikcp_update in millisec, if there 
@@ -378,13 +379,15 @@ void ikcp_update(ikcpcb *kcp, IUINT32 current);
 // Important to reduce unnacessary ikcp_update invoking. use it to 
 // schedule ikcp_update (eg. implementing an epoll-like mechanism, 
 // or optimize ikcp_update when handling massive kcp connections)
+// return (IUINT32)-1 if kcp link dead
 IUINT32 ikcp_check(const ikcpcb *kcp, IUINT32 current);
 
 // when you received a low level packet (eg. UDP packet), call it
 int ikcp_input(ikcpcb *kcp, const char *data, long size);
 
 // flush pending data
-void ikcp_flush(ikcpcb *kcp);
+//return err if kcp link dead
+int ikcp_flush(ikcpcb *kcp);
 
 // check the size of next message in the recv queue
 int ikcp_peeksize(const ikcpcb *kcp);

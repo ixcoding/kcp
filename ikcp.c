@@ -937,9 +937,11 @@ static int ikcp_wnd_unused(const ikcpcb *kcp)
 
 //---------------------------------------------------------------------
 // ikcp_flush
+// return -1 if kcp link dead
 //---------------------------------------------------------------------
-void ikcp_flush(ikcpcb *kcp)
+int ikcp_flush(ikcpcb *kcp)
 {
+	if (kcp->state) return -1;
 	IUINT32 current = kcp->current;
 	char *buffer = kcp->buffer;
 	char *ptr = buffer;
@@ -952,7 +954,7 @@ void ikcp_flush(ikcpcb *kcp)
 	IKCPSEG seg;
 
 	// 'ikcp_update' haven't been called. 
-	if (kcp->updated == 0) return;
+	if (kcp->updated == 0) return -2;
 
 	seg.conv = kcp->conv;
 	seg.cmd = IKCP_CMD_ACK;
@@ -1113,6 +1115,7 @@ void ikcp_flush(ikcpcb *kcp)
 
 			if (segment->xmit > kcp->dead_link+1) {
 				kcp->state = (IUINT32)-1;
+				return kcp->state;
 			}
 		}
 	}
@@ -1145,18 +1148,20 @@ void ikcp_flush(ikcpcb *kcp)
 		kcp->cwnd = 1;
 		kcp->incr = kcp->mss;
 	}
+	return 0;
 }
 
 
 //---------------------------------------------------------------------
 // update state (call it repeatedly, every 10ms-100ms), or you can ask 
 // ikcp_check when to call it again (without ikcp_input/_send calling).
-// 'current' - current timestamp in millisec. 
+// 'current' - current timestamp in millisec.
+// return -1 if kcp link dead 
 //---------------------------------------------------------------------
-void ikcp_update(ikcpcb *kcp, IUINT32 current)
+int ikcp_update(ikcpcb *kcp, IUINT32 current)
 {
 	IINT32 slap;
-
+	if (kcp->state) return -1;
 	kcp->current = current;
 
 	if (kcp->updated == 0) {
@@ -1176,8 +1181,9 @@ void ikcp_update(ikcpcb *kcp, IUINT32 current)
 		if (_itimediff(kcp->current, kcp->ts_flush) >= 0) {
 			kcp->ts_flush = kcp->current + kcp->interval;
 		}
-		ikcp_flush(kcp);
+		return ikcp_flush(kcp);
 	}
+	return 0;
 }
 
 
@@ -1189,9 +1195,11 @@ void ikcp_update(ikcpcb *kcp, IUINT32 current)
 // Important to reduce unnacessary ikcp_update invoking. use it to 
 // schedule ikcp_update (eg. implementing an epoll-like mechanism, 
 // or optimize ikcp_update when handling massive kcp connections)
+// return (uint32)-1 if kcp link dead
 //---------------------------------------------------------------------
 IUINT32 ikcp_check(const ikcpcb *kcp, IUINT32 current)
 {
+	if (kcp->state) return (IUINT32)-1; 
 	IUINT32 ts_flush = kcp->ts_flush;
 	IINT32 tm_flush = 0x7fffffff;
 	IINT32 tm_packet = 0x7fffffff;
