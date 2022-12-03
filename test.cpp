@@ -26,6 +26,12 @@ int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 	return 0;
 }
 
+int on_ack(struct IKCPCB *kcp, IUINT64 usn)
+{
+    printf("on_ack kcp:%p, usn:%llx\n", kcp, usn);
+    return 0;
+}
+
 // 测试用例
 void test(int mode)
 {
@@ -37,9 +43,13 @@ void test(int mode)
 	ikcpcb *kcp1 = ikcp_create(0x11223344, (void*)0);
 	ikcpcb *kcp2 = ikcp_create(0x11223344, (void*)1);
 
+	printf("kcp:%p, kcp2:%p\n", kcp1, kcp2);
+
 	// 设置kcp的下层输出，这里为 udp_output，模拟udp网络输出函数
 	kcp1->output = udp_output;
 	kcp2->output = udp_output;
+	kcp1->on_ack = kcp2->on_ack = on_ack;
+
 
 	IUINT32 current = iclock();
 	IUINT32 slap = current + 20;
@@ -94,7 +104,7 @@ void test(int mode)
 			((IUINT32*)buffer)[1] = current;
 
 			// 发送上层协议包
-			ikcp_send(kcp1, buffer, 8);
+			ikcp_send(kcp1, buffer, 8, 0x100+index);
 		}
 
 		// 处理虚拟网络：检测是否有udp包从p1->p2
@@ -119,7 +129,7 @@ void test(int mode)
 			// 没有收到包就退出
 			if (hr < 0) break;
 			// 如果收到包就回射
-			ikcp_send(kcp2, buffer, hr);
+			ikcp_send(kcp2, buffer, hr, 0x1000+hr);
 		}
 
 		// kcp1收到kcp2的回射数据

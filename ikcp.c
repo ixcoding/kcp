@@ -346,6 +346,10 @@ void ikcp_setoutput(ikcpcb *kcp, int (*output)(const char *buf, int len,
 	kcp->output = output;
 }
 
+void ikcp_setack(ikcpcb *kcp, int (*on_ack)(ikcpcb *kcp, IUINT64 usn))
+{
+	kcp->on_ack = on_ack;
+}
 
 //---------------------------------------------------------------------
 // user/upper level recv: returns size, returns below zero for EAGAIN
@@ -461,7 +465,7 @@ int ikcp_peeksize(const ikcpcb *kcp)
 //---------------------------------------------------------------------
 // user/upper level send, returns below zero for error
 //---------------------------------------------------------------------
-int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT16 usn)
+int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn)
 {
 	IKCPSEG *seg;
 	int count, i;
@@ -503,8 +507,6 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT16 usn)
 	else count = (len + kcp->mss - 1) / kcp->mss;
 
 	if (count >= (int)IKCP_WND_RCV) return -2;
-
-	if (count == 0) count = 1;
 
 	// fragment
 	for (i = 0; i < count; i++) {
@@ -576,7 +578,7 @@ static void ikcp_parse_ack(ikcpcb *kcp, IUINT32 sn)
 		next = p->next;
 		if (sn == seg->sn) {
 			iqueue_del(p);
-			if (kcp->on_ack) kcp->on_ack(kcp, seg->usn);
+			if (!seg->frg && kcp->on_ack) kcp->on_ack(kcp, seg->usn);
 			ikcp_segment_delete(kcp, seg);
 			kcp->nsnd_buf--;
 			break;
@@ -595,7 +597,7 @@ static void ikcp_parse_una(ikcpcb *kcp, IUINT32 una)
 		next = p->next;
 		if (_itimediff(una, seg->sn) > 0) {
 			iqueue_del(p);
-			if(kcp->on_ack) kcp->on_ack(kcp, seg->usn);
+			if(!seg->frg && kcp->on_ack) kcp->on_ack(kcp, seg->usn);
 			ikcp_segment_delete(kcp, seg);
 			kcp->nsnd_buf--;
 		}	else {

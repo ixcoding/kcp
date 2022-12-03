@@ -279,7 +279,7 @@ struct IKCPSEG
 	IUINT32 rto;
 	IUINT32 fastack;
 	IUINT32 xmit;
-	IUINT16 usn; //user sn
+	IUINT64 usn; //user sn
 	char data[1];
 };
 
@@ -314,7 +314,7 @@ struct IKCPCB
 	int nocwnd, stream;
 	int logmask;
 	int (*output)(const char *buf, int len, struct IKCPCB *kcp, void *user);
-	int (*on_ack)(struct IKCPCB *kcp, IUINT16 usn);
+	int (*on_ack)(struct IKCPCB *kcp, IUINT64 usn);
 	void (*writelog)(const char *log, struct IKCPCB *kcp, void *user);
 };
 
@@ -355,13 +355,13 @@ void ikcp_setoutput(ikcpcb *kcp, int (*output)(const char *buf, int len,
 	ikcpcb *kcp, void *user));
 
 // set on_ack callback, which  invoked by kcp when one segment acked by peer
-void ikcp_setack(ikcpcb *kcp, int (*on_ack)(ikcpcb *kcp, IUINT16 usn));
+void ikcp_setack(ikcpcb *kcp, int (*on_ack)(ikcpcb *kcp, IUINT64 usn));
 
 // user/upper level recv: returns size, returns below zero for EAGAIN
 int ikcp_recv(ikcpcb *kcp, char *buffer, int len);
 
 // user/upper level send, returns below zero for error, fragment count if success
-int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT16 usn);
+int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn);
 
 // update state (call it repeatedly, every 10ms-100ms), or you can ask 
 // ikcp_check when to call it again (without ikcp_input/_send calling).
