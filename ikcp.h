@@ -355,7 +355,10 @@ void ikcp_setoutput(ikcpcb *kcp, int (*output)(const char *buf, int len,
 	ikcpcb *kcp, void *user));
 
 // set on_ack callback, which  invoked by kcp when one segment acked by peer
-void ikcp_setack(ikcpcb *kcp, int (*on_ack)(ikcpcb *kcp, IUINT64 usn));
+void ikcp_on_ack(ikcpcb *kcp, int (*on_ack)(ikcpcb *kcp, IUINT64 usn));
+
+//set dead_link resend times, default IKCP_DEADLINK=20
+void ikcp_max_resend(ikcpcb *kcp, int max_retry);
 
 // user/upper level recv: returns size, returns below zero for EAGAIN
 int ikcp_recv(ikcpcb *kcp, char *buffer, int len);

@@ -50,8 +50,8 @@ void test_on_ack()
 
     ikcp_setoutput(kcp, udp_output);
     ikcp_setoutput(kcp2, udp_output);
-    ikcp_setack(kcp, on_ack);
-    ikcp_setack(kcp2, on_ack);
+    ikcp_on_ack(kcp, on_ack);
+    ikcp_on_ack(kcp2, on_ack);
     ikcp_nodelay(kcp, 0, 10, 0, 0);
     
 
@@ -126,7 +126,7 @@ void test_unorded_recv()
 
     
     ikcp_setoutput(kcp, udp_output);
-    ikcp_setack(kcp, on_ack);
+    ikcp_on_ack(kcp, on_ack);
      ikcp_nodelay(kcp, 0, 10, 0, 0);
     
     char src[3000];

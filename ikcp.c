@@ -346,10 +346,26 @@ void ikcp_setoutput(ikcpcb *kcp, int (*output)(const char *buf, int len,
 	kcp->output = output;
 }
 
-void ikcp_setack(ikcpcb *kcp, int (*on_ack)(ikcpcb *kcp, IUINT64 usn))
+//---------------------------------------------------------------------
+// set ack callback, when kcp recv one ack from peer
+// usn is user's sn from ikcp_send
+// one send, one ack, one on_ack callback
+//---------------------------------------------------------------------
+void ikcp_on_ack(ikcpcb *kcp, int (*on_ack)(ikcpcb *kcp, IUINT64 usn))
 {
 	kcp->on_ack = on_ack;
 }
+
+//---------------------------------------------------------------------
+// set max resend times before link fail, notice first send is free. 
+// so if you set max_retry=3,  1 + 3-retry is ok, the 5th failed 
+//---------------------------------------------------------------------
+void ikcp_max_resend(ikcpcb *kcp, int max_resend)
+{
+	if (max_resend > 0)
+		kcp->dead_link = max_resend;
+}
+
 
 //---------------------------------------------------------------------
 // user/upper level recv: returns size, returns below zero for EAGAIN
@@ -1095,7 +1111,7 @@ void ikcp_flush(ikcpcb *kcp)
 				ptr += segment->len;
 			}
 
-			if (segment->xmit >= kcp->dead_link) {
+			if (segment->xmit > kcp->dead_link+1) {
 				kcp->state = (IUINT32)-1;
 			}
 		}
