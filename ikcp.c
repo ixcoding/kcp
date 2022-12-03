@@ -471,8 +471,9 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn)
 	int count, i;
 
 	assert(kcp->mss > 0);
-	if (len <= 0) return len;
-	if (len/kcp->mss >= (int)IKCP_WND_RCV-1) return -2;
+	if (kcp->state) return -1;
+	if (len == 0) return 0;
+	if (!buffer || len<0 || len/kcp->mss >= (int)IKCP_WND_RCV-1) return -2; //invalid param
 
 	// append to previous segment in streaming mode (if possible)
 	if (kcp->stream != 0) {
@@ -488,10 +489,10 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn)
 				}
 				iqueue_add_tail(&seg->node, &kcp->snd_queue);
 				memcpy(seg->data, old->data, old->len);
-				if (buffer) {
-					memcpy(seg->data + old->len, buffer, extend);
-					buffer += extend;
-				}
+
+				memcpy(seg->data + old->len, buffer, extend);
+				buffer += extend;
+				
 				seg->len = old->len + extend;
 				seg->frg = 0;
 				len -= extend;
@@ -511,18 +512,16 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn)
 		if (seg == NULL) {
 			return -2;
 		}
-		if (buffer && len > 0) {
-			memcpy(seg->data, buffer, size);
-		}
+
+		memcpy(seg->data, buffer, size);
+		
 		seg->len = size;
 		seg->frg = (kcp->stream == 0)? (count - i - 1) : 0;
 		seg->usn = usn;
 		iqueue_init(&seg->node);
 		iqueue_add_tail(&seg->node, &kcp->snd_queue);
 		kcp->nsnd_que++;
-		if (buffer) {
-			buffer += size;
-		}
+		buffer += size;
 		len -= size;
 	}
 
