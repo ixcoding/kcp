@@ -260,30 +260,12 @@ typedef struct IQUEUEHEAD iqueue_head;
 	#endif
 #endif
 
-
-//=====================================================================
-// SEGMENT
-//=====================================================================
-struct IKCPSEG
-{
-	struct IQUEUEHEAD node;
-	IUINT32 conv;
-	IUINT32 cmd;
-	IUINT32 frg;
-	IUINT32 wnd;
-	IUINT32 ts;
-	IUINT32 sn;
-	IUINT32 una;
-	IUINT32 len;
-	IUINT32 resendts;
-	IUINT32 rto;
-	IUINT32 fastack;
-	IUINT32 xmit;
+typedef struct slot {
 	IUINT64 usn; //user sn
-	char data[1];
-};
-
-
+	IUINT32 capcity;  //data capcity
+	IUINT32 len;      //user data 's real size
+	char data[0];
+} slot;
 //---------------------------------------------------------------------
 // IKCPCB
 //---------------------------------------------------------------------
@@ -311,7 +293,7 @@ struct IKCPCB
 	char *buffer;
 	int fastresend;
 	int fastlimit;
-	int nocwnd, stream;
+	int nocwnd;
 	int logmask;
 	int (*output)(const char *buf, int len, struct IKCPCB *kcp, void *user);
 	int (*on_ack)(struct IKCPCB *kcp, IUINT64 usn);
@@ -359,6 +341,14 @@ void ikcp_on_ack(ikcpcb *kcp, int (*on_ack)(ikcpcb *kcp, IUINT64 usn));
 
 //set dead_link resend times, default IKCP_DEADLINK=20
 void ikcp_max_resend(ikcpcb *kcp, int max_retry);
+
+// user alloc a slot returns NULL if fail, slot->capcity = size if success
+slot* ikcp_alloc_slot(int size);
+// user free a slot
+void ikcp_free_slot(slot *s);
+
+// user/upper level send a slot returns below zero for error, 0 for success
+int ikcp_send_slot(ikcpcb *kcp, slot *st);
 
 // user/upper level recv: returns size, returns below zero for EAGAIN
 int ikcp_recv(ikcpcb *kcp, char *buffer, int len);

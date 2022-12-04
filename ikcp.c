@@ -17,8 +17,6 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-
-
 //=====================================================================
 // KCP BASIC
 //=====================================================================
@@ -141,7 +139,25 @@ static inline long _itimediff(IUINT32 later, IUINT32 earlier)
 //---------------------------------------------------------------------
 // manage segment
 //---------------------------------------------------------------------
-typedef struct IKCPSEG IKCPSEG;
+typedef struct IKCPSEG 
+{
+	struct IQUEUEHEAD node;
+	IUINT32 conv;
+	IUINT32 cmd;
+	IUINT32 frg;
+	IUINT32 wnd;
+	IUINT32 ts;
+	IUINT32 sn;
+	IUINT32 una;
+	IUINT32 resendts;
+	IUINT32 rto;
+	IUINT32 fastack;
+	IUINT32 xmit;
+	IUINT64 usn; //user sn,  usn, capcity, len, data should keep order with slot
+	IUINT32 capcity;
+	IUINT32 len;
+	char data[0];
+} IKCPSEG;
 
 static void* (*ikcp_malloc_hook)(size_t) = malloc;
 static void (*ikcp_free_hook)(void *) = free;
@@ -173,6 +189,24 @@ static IKCPSEG* ikcp_segment_new(ikcpcb *kcp, int size)
 static void ikcp_segment_delete(ikcpcb *kcp, IKCPSEG *seg)
 {
 	ikcp_free(seg);
+}
+
+// allocate a new kcp slot, user can fill data directly 
+// return data point, NULL if alloc failed
+slot* ikcp_alloc_slot(int size)
+{
+	IKCPSEG *p = ikcp_segment_new(NULL, size);
+	if (!p) NULL;
+
+	memset(p, 0, sizeof(IKCPSEG) + size);
+	p->capcity = size;
+	return (slot*)&p->usn;
+}
+
+// delete a slot
+void ikcp_free_slot(slot *s)
+{
+	ikcp_free(iqueue_entry(s->data, IKCPSEG, data));
 }
 
 // write log
@@ -246,7 +280,6 @@ ikcpcb* ikcp_create(IUINT32 conv, void *user)
 	kcp->probe = 0;
 	kcp->mtu = IKCP_MTU_DEF;
 	kcp->mss = kcp->mtu - IKCP_OVERHEAD;
-	kcp->stream = 0;
 
 	kcp->buffer = (char*)ikcp_malloc((kcp->mtu + IKCP_OVERHEAD) * 3);
 	if (kcp->buffer == NULL) {
@@ -477,9 +510,26 @@ int ikcp_peeksize(const ikcpcb *kcp)
 	return length;
 }
 
+//--------------------------------------------------------------------------
+// user/upper level send a slot returns below zero for error, 0 for success
+//--------------------------------------------------------------------------
+int ikcp_send_slot(ikcpcb *kcp, slot *st)
+{
+	if (!kcp || !st || st->len < 0) return -2;
+	if (kcp->state) return -1;
+	if (!st->len) return 0;
+
+	IKCPSEG *seg = iqueue_entry(st->data, IKCPSEG, data);
+
+	seg->frg = 0;
+	iqueue_init(&seg->node);
+	iqueue_add_tail(&seg->node, &kcp->snd_queue);
+	kcp->nsnd_que++;
+	return 0;
+}
 
 //---------------------------------------------------------------------
-// user/upper level send, returns below zero for error
+// user/upper level send, returns below zero for error, 0 for success
 //---------------------------------------------------------------------
 int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn)
 {
@@ -490,33 +540,6 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn)
 	if (kcp->state) return -1;
 	if (len == 0) return 0;
 	if (!buffer || len<0 || len/kcp->mss >= (int)IKCP_WND_RCV-1) return -2; //invalid param
-
-	// append to previous segment in streaming mode (if possible)
-	if (kcp->stream != 0) {
-		if (!iqueue_is_empty(&kcp->snd_queue)) {
-			IKCPSEG *old = iqueue_entry(kcp->snd_queue.prev, IKCPSEG, node);
-			if (old->len < kcp->mss) {
-				int capacity = kcp->mss - old->len;
-				int extend = (len < capacity)? len : capacity;
-				seg = ikcp_segment_new(kcp, old->len + extend);
-				assert(seg);
-				if (seg == NULL) {
-					return -2;
-				}
-				iqueue_add_tail(&seg->node, &kcp->snd_queue);
-				memcpy(seg->data, old->data, old->len);
-
-				memcpy(seg->data + old->len, buffer, extend);
-				buffer += extend;
-				
-				seg->len = old->len + extend;
-				seg->frg = 0;
-				len -= extend;
-				iqueue_del_init(&old->node);
-				ikcp_segment_delete(kcp, old);
-			}
-		}
-	}
 
 	count = (len + kcp->mss - 1) / kcp->mss;
 
@@ -532,7 +555,7 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn)
 		memcpy(seg->data, buffer, size);
 		
 		seg->len = size;
-		seg->frg = (kcp->stream == 0)? (count - i - 1) : 0;
+		seg->frg = count - i - 1;
 		seg->usn = usn;
 		iqueue_init(&seg->node);
 		iqueue_add_tail(&seg->node, &kcp->snd_queue);
@@ -541,7 +564,7 @@ int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn)
 		len -= size;
 	}
 
-	return count;
+	return 0;
 }
 
 
