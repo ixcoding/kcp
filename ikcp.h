@@ -366,6 +366,10 @@ int ikcp_send_slots(ikcpcb *kcp, slots *slts, IUINT64 usn);
 // user/upper level recv: returns size, returns below zero for EAGAIN
 int ikcp_recv(ikcpcb *kcp, char *buffer, int len);
 
+// user/upper level recv slots, return NULL for EAGAIN, return slots success
+// user should ikcp_free_slots them if useless
+slots* ikcp_recv_slots(ikcpcb *kcp);
+
 // user/upper level send, returns below zero for error, fragment count if success
 int ikcp_send(ikcpcb *kcp, const char *buffer, int len, IUINT64 usn);
 

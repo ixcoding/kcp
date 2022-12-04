@@ -523,6 +523,68 @@ int ikcp_recv(ikcpcb *kcp, char *buffer, int len)
 
 
 //---------------------------------------------------------------------
+// user/upper level recv slots, return NULL for EAGAIN, return slots success
+// user should ikcp_free_slots them if useless
+//---------------------------------------------------------------------
+slots* ikcp_recv_slots(ikcpcb *kcp)
+{
+	assert(kcp);
+	if (iqueue_is_empty(&kcp->rcv_queue)) return NULL;
+
+	int recover = (kcp->nrcv_que >= kcp->rcv_wnd);
+
+	IKCPSEG *seg = iqueue_entry(kcp->rcv_queue.next, IKCPSEG, node);
+	if (kcp->nrcv_que < seg->frg + 1) return NULL;
+
+	int size = seg->frg + 1;
+	slots *slts = (slots*)ikcp_malloc(sizeof(slots) + size * sizeof(slot*));
+	if (!slts) return NULL;
+
+	slts->size = size;
+	int i = 0;
+	for (struct IQUEUEHEAD *p = kcp->rcv_queue.next; p != &kcp->rcv_queue; ++i) {
+		seg = iqueue_entry(p, IKCPSEG, node);
+		p = p->next;
+
+		seg->capcity = seg->len;
+		slts->slt[i] = (slot*)&seg->capcity;
+		iqueue_del(&seg->node);
+		kcp->nrcv_que--;
+
+		if (ikcp_canlog(kcp, IKCP_LOG_RECV)) {
+			ikcp_log(kcp, IKCP_LOG_RECV, "recv sn=%lu", (unsigned long)seg->sn);
+		}
+
+		if (!seg->frg)
+			break;
+	}
+
+	// move available data from rcv_buf -> rcv_queue
+	while (! iqueue_is_empty(&kcp->rcv_buf)) {
+		seg = iqueue_entry(kcp->rcv_buf.next, IKCPSEG, node);
+		if (seg->sn == kcp->rcv_nxt && kcp->nrcv_que < kcp->rcv_wnd) {
+			iqueue_del(&seg->node);
+			kcp->nrcv_buf--;
+			iqueue_add_tail(&seg->node, &kcp->rcv_queue);
+			kcp->nrcv_que++;
+			kcp->rcv_nxt++;
+		}	else {
+			break;
+		}
+	}
+
+	// fast recover
+	if (kcp->nrcv_que < kcp->rcv_wnd && recover) {
+		// ready to send back IKCP_CMD_WINS in ikcp_flush
+		// tell remote my window size
+		kcp->probe |= IKCP_ASK_TELL;
+	}
+
+	return slts;
+}
+
+
+//---------------------------------------------------------------------
 // peek data size
 //---------------------------------------------------------------------
 int ikcp_peeksize(const ikcpcb *kcp)
@@ -929,6 +991,8 @@ int ikcp_input(ikcpcb *kcp, const char *data, long size)
 					seg->sn = sn;
 					seg->una = una;
 					seg->len = len;
+					seg->capcity = len;
+					seg->usn = 0;
 
 					if (len > 0) {
 						memcpy(seg->data, data, len);
