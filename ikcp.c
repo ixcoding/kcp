@@ -142,6 +142,7 @@ static inline long _itimediff(IUINT32 later, IUINT32 earlier)
 typedef struct IKCPSEG 
 {
 	struct IQUEUEHEAD node;
+	IUINT64 usn; //user sn
 	IUINT32 conv;
 	IUINT32 cmd;
 	IUINT32 frg;
@@ -153,8 +154,7 @@ typedef struct IKCPSEG
 	IUINT32 rto;
 	IUINT32 fastack;
 	IUINT32 xmit;
-	IUINT64 usn; //user sn,  usn, capcity, len, data should keep order with slot
-	IUINT32 capcity;
+	IUINT32 capcity; //capcity, len, data should keep order with slot
 	IUINT32 len;
 	char data[0];
 } IKCPSEG;
@@ -212,7 +212,7 @@ slots* ikcp_alloc_slots(ikcpcb *kcp, int size)
 		}
 		s->capcity = kcp->mss;
 		s->frg = cnt - 1 - i;
-		p->slt[i] = (slot*)&s->usn;
+		p->slt[i] = (slot*)&s->capcity;
 		p->size++;
 	}
 
@@ -239,7 +239,7 @@ slot* ikcp_alloc_slot(ikcpcb *kcp, int size)
 
 	memset(p, 0, sizeof(IKCPSEG) + size);
 	p->capcity = size;
-	return (slot*)&p->usn;
+	return (slot*)&p->capcity;
 }
 
 // delete a slot
@@ -552,7 +552,7 @@ int ikcp_peeksize(const ikcpcb *kcp)
 //--------------------------------------------------------------------------
 // user/upper level send a slot returns below zero for error, 0 for success
 //--------------------------------------------------------------------------
-int ikcp_send_slot(ikcpcb *kcp, slot *slt)
+int ikcp_send_slot(ikcpcb *kcp, slot *slt, IUINT64 usn)
 {
 	if (!kcp || !slt || slt->len < 0) return -2;
 	if (kcp->state) return -1;
@@ -561,6 +561,7 @@ int ikcp_send_slot(ikcpcb *kcp, slot *slt)
 	IKCPSEG *seg = iqueue_entry(slt->data, IKCPSEG, data);
 
 	seg->frg = 0;
+	seg->usn = usn;
 	iqueue_init(&seg->node);
 	iqueue_add_tail(&seg->node, &kcp->snd_queue);
 	kcp->nsnd_que++;
@@ -572,14 +573,14 @@ int ikcp_send_slot(ikcpcb *kcp, slot *slt)
 // user should fill slot->usn  and slot->len with real data length
 // keep data order in slots
 //--------------------------------------------------------------------------
-int ikcp_send_slots(ikcpcb *kcp, slots *slts)
+int ikcp_send_slots(ikcpcb *kcp, slots *slts, IUINT64 usn)
 {
 	if (!kcp || !slts || slts->size < 0) return -2;
 	if (kcp->state) return -1;
 	IKCPSEG *seg;
 	for (int i=0; i<slts->size; ++i) {
 		seg = iqueue_entry(slts->slt[i]->data, IKCPSEG, data);
-
+		seg->usn = usn;
 		iqueue_init(&seg->node);
 		iqueue_add_tail(&seg->node, &kcp->snd_queue);
 		kcp->nsnd_que++;		

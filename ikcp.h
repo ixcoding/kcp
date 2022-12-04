@@ -261,14 +261,13 @@ typedef struct IQUEUEHEAD iqueue_head;
 #endif
 
 typedef struct slot {
-	IUINT64 usn; //user sn
 	IUINT32 capcity;  //data capcity
 	IUINT32 len;      //user data 's real size
 	char data[0];
 } slot;
 
 typedef struct slots {
-	IUINT32 size;      //slot size
+	IUINT32 size;      //slot num
 	slot *slt[0];
 } slots;
 
@@ -358,11 +357,11 @@ slots* ikcp_alloc_slots(ikcpcb *kcp, int size);
 void ikcp_free_slots(slots *s);
 
 // user/upper level send slot(s) returns below zero for error, 0 for success
-int ikcp_send_slot(ikcpcb *kcp, slot *slt);
+int ikcp_send_slot(ikcpcb *kcp, slot *slt, IUINT64 usn);
 // user/upper level send  slots returns below zero for error, 0 for success
 // user should fill slot->usn  and slot->len with real data length
 // CAUTION: make sure to keep data order in slots
-int ikcp_send_slots(ikcpcb *kcp, slots *slts);
+int ikcp_send_slots(ikcpcb *kcp, slots *slts, IUINT64 usn);
 
 // user/upper level recv: returns size, returns below zero for EAGAIN
 int ikcp_recv(ikcpcb *kcp, char *buffer, int len);
