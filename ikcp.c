@@ -191,10 +191,49 @@ static void ikcp_segment_delete(ikcpcb *kcp, IKCPSEG *seg)
 	ikcp_free(seg);
 }
 
+
+// allocate a new kcp slots, user can fill data directly
+// size is the total size of slots
+// CAUTION:  user should keep data in slots order when fill data
+// return data point, NULL if alloc failed
+slots* ikcp_alloc_slots(ikcpcb *kcp, int size)
+{
+	if (size<=0 || size/kcp->mss >= (int)IKCP_WND_RCV-1) return NULL;
+	int cnt = (size + kcp->mss -1)/kcp->mss;
+	slots *p = (slots*)ikcp_malloc(sizeof(slots) + cnt * sizeof(slot*));
+	if (!p) return NULL;
+	p->size = 0;
+	IKCPSEG *s;
+	for (int i=0; i<cnt; ++i) {
+		s = ikcp_segment_new(NULL, kcp->mss);
+		if (!s) {
+			ikcp_free_slots(p);
+			return NULL;
+		}
+		s->capcity = kcp->mss;
+		s->frg = cnt - 1 - i;
+		p->slt[i] = (slot*)&s->usn;
+		p->size++;
+	}
+
+	return p;
+}
+
+// delete  slots
+void ikcp_free_slots(slots *s)
+{
+	if (!s || s->size<=0) return;
+	for (int i=0; i<s->size; ++i)
+		ikcp_free(iqueue_entry(s->slt[i]->data, IKCPSEG, data));
+	
+	ikcp_free(s);
+}
+
 // allocate a new kcp slot, user can fill data directly 
 // return data point, NULL if alloc failed
-slot* ikcp_alloc_slot(int size)
+slot* ikcp_alloc_slot(ikcpcb *kcp, int size)
 {
+	if (size > kcp->mss) return NULL;
 	IKCPSEG *p = ikcp_segment_new(NULL, size);
 	if (!p) NULL;
 
@@ -513,18 +552,38 @@ int ikcp_peeksize(const ikcpcb *kcp)
 //--------------------------------------------------------------------------
 // user/upper level send a slot returns below zero for error, 0 for success
 //--------------------------------------------------------------------------
-int ikcp_send_slot(ikcpcb *kcp, slot *st)
+int ikcp_send_slot(ikcpcb *kcp, slot *slt)
 {
-	if (!kcp || !st || st->len < 0) return -2;
+	if (!kcp || !slt || slt->len < 0) return -2;
 	if (kcp->state) return -1;
-	if (!st->len) return 0;
+	if (!slt->len) return 0;
 
-	IKCPSEG *seg = iqueue_entry(st->data, IKCPSEG, data);
+	IKCPSEG *seg = iqueue_entry(slt->data, IKCPSEG, data);
 
 	seg->frg = 0;
 	iqueue_init(&seg->node);
 	iqueue_add_tail(&seg->node, &kcp->snd_queue);
 	kcp->nsnd_que++;
+	return 0;
+}
+
+//--------------------------------------------------------------------------
+// user/upper level send  slots returns below zero for error, 0 for success
+// user should fill slot->usn  and slot->len with real data length
+// keep data order in slots
+//--------------------------------------------------------------------------
+int ikcp_send_slots(ikcpcb *kcp, slots *slts)
+{
+	if (!kcp || !slts || slts->size < 0) return -2;
+	if (kcp->state) return -1;
+	IKCPSEG *seg;
+	for (int i=0; i<slts->size; ++i) {
+		seg = iqueue_entry(slts->slt[i]->data, IKCPSEG, data);
+
+		iqueue_init(&seg->node);
+		iqueue_add_tail(&seg->node, &kcp->snd_queue);
+		kcp->nsnd_que++;		
+	}
 	return 0;
 }
 

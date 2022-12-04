@@ -266,6 +266,12 @@ typedef struct slot {
 	IUINT32 len;      //user data 's real size
 	char data[0];
 } slot;
+
+typedef struct slots {
+	IUINT32 size;      //slot size
+	slot *slt[0];
+} slots;
+
 //---------------------------------------------------------------------
 // IKCPCB
 //---------------------------------------------------------------------
@@ -343,12 +349,20 @@ void ikcp_on_ack(ikcpcb *kcp, int (*on_ack)(ikcpcb *kcp, IUINT64 usn));
 void ikcp_max_resend(ikcpcb *kcp, int max_retry);
 
 // user alloc a slot returns NULL if fail, slot->capcity = size if success
-slot* ikcp_alloc_slot(int size);
+slot* ikcp_alloc_slot(ikcpcb *kcp, int size);
 // user free a slot
 void ikcp_free_slot(slot *s);
 
-// user/upper level send a slot returns below zero for error, 0 for success
-int ikcp_send_slot(ikcpcb *kcp, slot *st);
+// user alloc slots returns NULL if fail
+slots* ikcp_alloc_slots(ikcpcb *kcp, int size);
+void ikcp_free_slots(slots *s);
+
+// user/upper level send slot(s) returns below zero for error, 0 for success
+int ikcp_send_slot(ikcpcb *kcp, slot *slt);
+// user/upper level send  slots returns below zero for error, 0 for success
+// user should fill slot->usn  and slot->len with real data length
+// CAUTION: make sure to keep data order in slots
+int ikcp_send_slots(ikcpcb *kcp, slots *slts);
 
 // user/upper level recv: returns size, returns below zero for EAGAIN
 int ikcp_recv(ikcpcb *kcp, char *buffer, int len);
